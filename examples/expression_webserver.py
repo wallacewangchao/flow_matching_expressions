@@ -1,3 +1,5 @@
+import asyncio
+import itertools
 import time
 import sys
 import json
@@ -8,13 +10,14 @@ import queue
 import socket
 
 import keyboard
-from websocket_server import WebsocketServer
 from save_data import SaveData
 from termcolor import colored
 import os
 from flow_expression_inference_class import FlowExpression
 import numpy as np
 from copy import deepcopy
+import websockets
+from websockets.exceptions import ConnectionClosed
 
 
 class WebSocketServerApp:
@@ -43,8 +46,12 @@ class WebSocketServerApp:
         self.read_and_send_thread = None
         self.data_to_send_folder = "data/dummy_data_to_send"
 
-        # Set up the websocket server
-        self.ws_server = WebsocketServer(host=self.host, port=self.port)
+        # Async websocket server state
+        self.loop = None
+        self.loop_ready = threading.Event()
+        self.server = None
+        self.connected_clients = {}
+        self._client_id_counter = itertools.count(1)
 
         self.is_sent_enough_data = threading.Event()
         self.is_request_prempt = threading.Event()
@@ -59,10 +66,10 @@ class WebSocketServerApp:
             print("FlowExpression Model Loaded")
 
             self.OBS_PARMS = {
-            "obs_horizon": self.fm_expression.obs_horizon,
-            "pred_horizon": self.fm_expression.pred_horizon,
-            "action_horizon": self.fm_expression.pred_horizon - 1,
-            "obs_poses_dim": self.fm_expression.obs_poses_dim,
+                "obs_horizon": self.fm_expression.obs_horizon,
+                "pred_horizon": self.fm_expression.pred_horizon,
+                "action_horizon": self.fm_expression.pred_horizon - 1,
+                "obs_poses_dim": self.fm_expression.obs_poses_dim,
             }
 
             self.fm_inference_worker_thread = threading.Thread(
@@ -76,30 +83,27 @@ class WebSocketServerApp:
             self.obs_queue_lock = threading.Lock()  # add a lock
 
             self.fm_inference_worker_thread.start()
+            self._read_jsonl_to_FM_obs_data(self.OBS_PARMS["obs_horizon"])
 
         self.dummy_obs_input_dict = {}
-        self._read_jsonl_to_FM_obs_data(self.OBS_PARMS["obs_horizon"])
 
     def signal_handler(self, sig, frame):
         print("Ctrl+C pressed, shutting down...")
         self.running = False
-        if self.key_detection_thread and self.key_detection_thread.is_alive():
-            self.key_detection_thread.join(timeout=1)
-        if self.is_inference_mode and self.fm_inference_worker_thread and self.fm_inference_worker_thread.is_alive():
-            self.fm_inference_worker_thread.join(timeout=1)
-        sys.exit(0)
+        self.is_sent_enough_data.set()
+        self.is_request_prempt.set()
+        self.data_to_send_queue.put(None)
+        if self.loop and self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.loop.stop)
 
-    def new_client(self, client, server):
-        print(colored("client connected: ", "green"), client["id"])
-        response = "Server connected!"
-        server.send_message(client, response)
+    def new_client(self, client_id: int):
+        print(colored("client connected: ", "green"), client_id)
 
-    def client_left(self, client, server):
-        print(colored("client disconnected", "red"), client["id"])
+    def client_left(self, client_id: int):
+        print(colored("client disconnected", "red"), client_id)
 
-    def message_received(self, client, server, message):
-        # print(colored("message received: ", "yellow"), message)
-        print(colored(f"received from Unity: {len(message)} bytes","green"))
+    async def message_received(self, client_id: int, message: str):
+        print(colored(f"received from Unity: {len(message)} bytes", "green"))
         if message == "start_transmit":
             print(colored("start_transmit", "green"))
             self.is_receiving = True
@@ -117,7 +121,7 @@ class WebSocketServerApp:
         elif message == "Hello from Unity!":
             print(colored("Unity Connected", "green"))
 
-        else:    
+        else:
             try:
                 data = json.loads(message)
                 if self.is_inference_mode:
@@ -144,15 +148,91 @@ class WebSocketServerApp:
             except json.JSONDecodeError as e:
                 print(f"JSON decode error: {e}")
 
+    def _broadcast_from_thread(self, message: str):
+        """Schedule a broadcast coroutine from non-async threads."""
+        self.loop_ready.wait()
+
+        if not self.loop or not self.loop.is_running():
+            return
+
+        future = asyncio.run_coroutine_threadsafe(
+            self._broadcast_message(message), self.loop
+        )
+        try:
+            future.result()
+        except Exception as exc:  # noqa: BLE001
+            print(f"Error sending data: {exc}")
+
+    async def _broadcast_message(self, message: str):
+        if not self.connected_clients:
+            return
+
+        await asyncio.gather(
+            *(
+                self._safe_send(client_id, websocket, message)
+                for client_id, websocket in list(self.connected_clients.items())
+            ),
+            return_exceptions=True,
+        )
+
+    async def _safe_send(self, client_id: int, websocket, message: str):
+        try:
+            await websocket.send(message)
+        except ConnectionClosed:
+            await self._handle_disconnect(client_id)
+
+    async def _handle_disconnect(self, client_id: int):
+        websocket = self.connected_clients.pop(client_id, None)
+        if not websocket:
+            return
+
+        self.client_left(client_id)
+        try:
+            await websocket.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def _close_all_clients(self):
+        if not self.connected_clients:
+            return
+
+        await asyncio.gather(
+            *(self._handle_disconnect(client_id) for client_id in list(self.connected_clients.keys())),
+            return_exceptions=True,
+        )
+
+    async def handle_client(self, websocket):  # noqa: D401, ANN001
+        client_id = next(self._client_id_counter)
+        self.connected_clients[client_id] = websocket
+        self.new_client(client_id)
+
+        request_path = getattr(websocket, "path", "")
+        if request_path:
+            print(colored(f"client {client_id} requested {request_path}", "cyan"))
+
+        response = "Server connected!"
+        try:
+            await websocket.send(response)
+        except ConnectionClosed:
+            await self._handle_disconnect(client_id)
+            return
+
+        try:
+            async for message in websocket:
+                await self.message_received(client_id, message)
+        except ConnectionClosed:
+            pass
+        finally:
+            await self._handle_disconnect(client_id)
+
     def send_data(self, dict_list: list, time_interval: float):
         """
         Serializes the provided dictionary to JSON and sends it to all connected websocket clients.
         """
         try:
             for data in dict_list:
-
                 json_data = json.dumps(data)
-                self.ws_server.send_message_to_all(json_data)
+                self._broadcast_from_thread(json_data)
                 print(f"Json data sent to Unity: {len(json_data)} bytes")
                 time.sleep(time_interval)
 
@@ -160,21 +240,32 @@ class WebSocketServerApp:
             print(f"Error sending data: {e}")
 
     def send_data_worker(self):
+        self.loop_ready.wait()
         while self.running:
             dict_list = self.data_to_send_queue.get(block=True)
+            if dict_list is None:
+                self.data_to_send_queue.task_done()
+                break
+
             self.is_sent_enough_data.clear()
             self.is_request_prempt.clear()
+
+            action_horizon = None
+            if hasattr(self, "OBS_PARMS"):
+                action_horizon = self.OBS_PARMS.get("action_horizon")
 
             for i in range(len(dict_list)):
                 if self.is_request_prempt.is_set():
                     print(colored("preemption request", "red"))
                     break
                 s = json.dumps(dict_list[i])
-                self.ws_server.send_message_to_all(s)
-                if i == self.OBS_PARMS["action_horizon"] - 1:
+                self._broadcast_from_thread(s)
+                if action_horizon and i == action_horizon - 1:
                     self.is_sent_enough_data.set()
                 print(f"Json data sent to Unity: {len(s)} bytes")
                 time.sleep(self.send_sleep_time)
+
+            self.data_to_send_queue.task_done()
 
     def read_and_send_stored_data(self):
         dict_list = []
@@ -393,15 +484,48 @@ class WebSocketServerApp:
             )
         )
 
-        self.ws_server.set_fn_new_client(self.new_client)
-        self.ws_server.set_fn_client_left(self.client_left)
-        self.ws_server.set_fn_message_received(self.message_received)
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        self.loop_ready.set()
 
         self.key_detection_thread = threading.Thread(
             target=self.start_key_detector, daemon=True
         )
         self.key_detection_thread.start()
-        self.ws_server.run_forever()
+
+        try:
+            self.server = self.loop.run_until_complete(self._start_server())
+            print(colored("Websocket server running.", "green"))
+            self.loop.run_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            self.running = False
+            if self.data_to_send_thread and self.data_to_send_thread.is_alive():
+                self.data_to_send_queue.put(None)
+
+            if self.server:
+                self.server.close()
+                self.loop.run_until_complete(self.server.wait_closed())
+
+            self.loop.run_until_complete(self._close_all_clients())
+            self.loop.close()
+            self.loop = None
+            self.loop_ready.clear()
+
+            if self.data_to_send_thread and self.data_to_send_thread.is_alive():
+                self.data_to_send_thread.join(timeout=1)
+
+            if self.key_detection_thread and self.key_detection_thread.is_alive():
+                self.key_detection_thread.join(timeout=1)
+
+    async def _start_server(self):
+        return await websockets.serve(
+            self.handle_client,
+            self.host,
+            self.port,
+            max_size=None,  # allow large payloads from Unity
+        )
 
 
 if __name__ == "__main__":
