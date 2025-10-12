@@ -38,7 +38,7 @@ class WebSocketServerApp:
         self.is_parallel_sending = True
         self.send_sleep_time = 0.1
 
-        print(f"is inference mode : {self.is_inference_mode}")
+        print(f"{'Inference Mode' if self.is_inference_mode else 'Collection Mode'}")
 
         self.running = True
         self.key_detection_thread = None
@@ -83,9 +83,9 @@ class WebSocketServerApp:
             self.obs_queue_lock = threading.Lock()  # add a lock
 
             self.fm_inference_worker_thread.start()
+            self.dummy_obs_input_dict = {}
             self._read_jsonl_to_FM_obs_data(self.OBS_PARMS["obs_horizon"])
 
-        self.dummy_obs_input_dict = {}
 
     def signal_handler(self, sig, frame):
         print("Ctrl+C pressed, shutting down...")

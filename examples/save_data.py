@@ -7,8 +7,7 @@ from datetime import datetime
 
 class SaveData:
     class OneHotActionEncoder:
-        # ACTION_NAMES = ["sad", "happy", "calm", "angry"] # 4/21 model one hot encoding
-        ACTION_NAMES = ["calm", "angry", "sad", "happy",  "curious", "fear", "bored",]
+        ACTION_NAMES = ["calm", "angry", "sad", "happy",  "curious", "fear", "bored",] # model one hot encoding
 
         @classmethod
         def encode(cls, action: str):
