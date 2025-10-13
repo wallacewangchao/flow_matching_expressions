@@ -1,25 +1,16 @@
 # 🤖🌊 robot manipulation with flow matching
 
-![pipeline](images/overall.png "overall")
+![pipeline](images/teaser.jpg "overall")
 
-[![Static Badge](https://img.shields.io/badge/arXiv-2409.01083-B31B1B?style=flat-square&logo=arxiv)](https://arxiv.org/abs/2409.01083)
-<!--[![License](https://img.shields.io/pypi/l/cobras?style=flat-square)](https://opensource.org/license/bsd-3-clause)-->
-<!--[![Code Style](https://img.shields.io/badge/code_style-black-black?style=flat-square)](https://github.com/psf/black)-->
+[![Static Badge](https://img.shields.io/badge/arXiv-2409.01083-B31B1B?style=flat-square&logo=arxiv)](https://arxiv.org/abs/2508.08999)
 
-A reference implementation for the `Affordance-based Robot Manipulation with Flow Matching`.
+A Webocket server for collecting data and real-time reasoning for `Generation of Real-time Robotic Emotional Expressions Learning from Human Demonstration in Mixed Reality`.
+This repo forks the flow-matching model repo for training and inference: https://github.com/HRI-EU/flow_matching.git
 
-* Paper page: Affordance-based Robot Manipulation with Flow Matching. https://arxiv.org/abs/2409.01083
-* Project page: https://hri-eu.github.io/flow-matching-policy/
+* Paper page: Generation of Real-time Robotic Emotional Expressions Learning from Human Demonstration in Mixed Reality. https://arxiv.org/abs/2508.08999
+* Project page: https://wallacewangchao.github.io/fm-expressions/
 * Code: https://github.com/HRI-EU/flow_matching
-* Author: Fan Zhang (fan.zhang@honda-ri.de), Michael Gienger
-<!--* <video src="https://github.com/user-attachments/assets/633d6756-a3ff-4fde-aace-bbf5fbd58866" width="300" autoplay loop muted>-->
-
-<p align="center">
-<img src="images/flow.gif" width="900" height="270"/>
-</p>
-
-### Updates
-We are in process of integrating flow matching into the Hugging Face 🤗 LeRobot PushT task.
+* Author: Chao Wang (chao.wang@honda-ri.de)
 
 ## Key components
 🔬 **This repo contains** \
@@ -40,17 +31,6 @@ Training and evaluation examples of using flow matching on PushT and Franka Kitc
   * `AutoTulipAgent`: Fully autonomous variant; can use the search tool at any time and modify its tool library with CRUD operations
   * `DfsTulipAgent`: DFS inspired variant that leverages a DAG for keeping track of tasks and suitable tools, can create new tools-->
   
-🏆 **Some Results** \
-Pretrained weights with flow matching: [Push-T](https://drive.google.com/file/d/1czhtJyD3ny8op-P626Ucqhqur8SIaZZs/view?usp=sharing), [Franka Kitchen](https://drive.google.com/file/d/1oZioEezMlN-7Psu2UQBvLx_YztR7YkG8/view?usp=sharing)
-
-| Methods       | Push-T<sup>1</sup> | Push-T<sup>2</sup>       | Franka Kitchen | robomimic |
-| ------------- | ------------- | ------------- | ------------- | ------------- |
-| Flow Matching | 0.9035/0.7519 | 0.7463/0.6218 | 0.9960/0.7172 | |
-
-sampling range<sup>1</sup>: [rs.randint(50, 450), rs.randint(50, 450), rs.randint(200, 300), rs.randint(200, 300), rs.randn() * 2 * np.pi - np.pi]
-
-sampling range<sup>2</sup>: [rs.randint(50, 450), rs.randint(50, 450), rs.randint(100, 400), rs.randint(100, 400), rs.randn() * 2 * np.pi - np.pi]
-
 📝 **Acknowledgements** 
 * The model structure implementation is modified from Cheng Chi's [diffusion_policy](https://github.com/real-stanford/diffusion_policy) repo. The code is under external/diffusion_policy (MIT license). Some code that we modified is located under external/models.
 * We use some functions from Alexander Tong's [TorchCFM](https://github.com/atong01/conditional-flow-matching) repo (MIT license). It is installed through pip.
