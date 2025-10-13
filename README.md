@@ -1,4 +1,4 @@
-# 🤖🌊 robot manipulation with flow matching
+# 🤖🌊 Robot emotional expression generation via flow-matching
 
 ![pipeline](images/teaser.jpg "overall")
 
@@ -15,7 +15,7 @@ This repo forks the flow-matching model repo for training and inference: https:/
 🔬 **This repo contains** \
 * A websocket server for collecting data in VR and real-time reasoning.
 * Training emotional expression via FM
-* An .apk which can be installed on Meta QuestPro for collecting data and observing inference result can be download here: https://drive.google.com/drive/folders/1XDhvuSp9l3wu2Fq6JijWiwktJn3MOONX?usp=sharing
+* An .apk which can be installed on Meta QuestPro for collecting data and observing inference result, please download here: https://drive.google.com/drive/folders/1XDhvuSp9l3wu2Fq6JijWiwktJn3MOONX?usp=sharing
 
 📝 **Acknowledgements** 
 * The model structure implementation is modified from Cheng Chi's [diffusion_policy](https://github.com/real-stanford/diffusion_policy) repo. The code is under external/diffusion_policy (MIT license). Some code that we modified is located under external/models.
