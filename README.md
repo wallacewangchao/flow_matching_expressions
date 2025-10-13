@@ -9,7 +9,6 @@ This repo forks the flow-matching model repo for training and inference: https:/
 
 * Paper page: Generation of Real-time Robotic Emotional Expressions Learning from Human Demonstration in Mixed Reality. https://arxiv.org/abs/2508.08999
 * Project page: https://wallacewangchao.github.io/fm-expressions/
-* Code: https://github.com/HRI-EU/flow_matching
 * Author: Chao Wang (chao.wang@honda-ri.de)
 
 ## Key components
